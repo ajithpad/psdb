@@ -1,0 +1,283 @@
+
+import numpy as np
+import sys
+import pdb
+import socket
+import os
+
+class Parameters(object):
+  
+
+    # FILEPATHS        
+    if 'olympic' in socket.getfqdn():
+      data_path = '/media/DISK_B/results/basal/'
+      nest_path_tmp = '/media/DISK_B/tmp/nest/'
+    elif 'ui' in socket.getfqdn():
+      data_path = '/storage/users/ap1012/basal/results/'
+      nest_path_tmp = '/storage/users/ap1012/tmp/nest/'
+    elif ('kriemhild' or 'pollux' or 'castor' in socket.getfqdn()):
+      data_path = '/space/padmanabhan/results/basal/'
+      nest_path_tmp = '/space/padmanabhan/tmp/nest/'
+	
+
+    print_time = False
+
+    
+    # GENERAL PARAMETERS    
+    T_sim = 3000.		# (ms) main simulation time
+
+    T_wup = 500.		# (ms) warmup time
+    T_cdown = 0.		# (ms) cool-down time	# inputs are off in this last period
+    T_total = T_sim + T_wup + T_cdown
+    
+    
+    #NETWORK PARAMETERS   
+    order = 1000
+    N = [1,3]	# list with number of neurons per sub-population; negative indicates inhibitory population
+    inh2_ratio = 0.	# ratio of 2nd inhibitory population, 0: no 2nd inh population
+    exc2_ratio = 0.      # ratio of 2nd excitatory population, 0: no 2nd population
+    
+    model_type = 'psdb'
+    min_del = 0.1
+    max_del = 2.
+    
+    #del_dev = 10.
+    
+
+    
+    # Parameters for asynchronous irregular firing
+    g = 7.		# strength of inhibitory synapse relative to excitatory
+    eta = 9.1          	# external drive parameter 
+    epsilon = 0.1	# just used to compute input C_ext
+    hub_pop = 1	        # gives the population that is chosen as the hub
+    epsilon_hub = 0.8   # gives the connectivity of the hub neurons
+    hub_ratio = 0.	# gives the percentage of hub neurons
+    ff_pop = 1
+    
+    #Parameters for changing neuron types midway
+    change_type = 0 # 1 changes type and 0 does not
+    chg_time = 472. #Time at which the simulations need to be stopped and neuron types changed.s
+    num_chg = 500   #Number of neurons for which parameters need to be changed
+    chg_spk_bs = 4. #Number of spikes per burst for the changing neurons
+    
+
+      
+    #Parameters for pulse generator
+    sdev = 20.
+    
+    
+    # NEST SIMULATION PARAMETERS    
+    owr_files = False
+    dt = 0.1    	       	# ms simulation resolution (precise times are used, thus sort of irrelevant)
+    
+    #np.random.seed()		# different seed each time parameter object is created	
+
+    rnd_seeds = 1
+    #print rnd_seeds
+    
+    #record_spikes = 'all' 
+    #record_spikes = list(np.arange(self.pops,5004))
+    record_vm = [100]
+
+    # Initialize the parameters of the integrate and fire neuron
+    tau_syn_in = 10.0     # (ms) synaptic time constant
+    tau_syn_ex = 2.0
+    tau_m  = 20.0		# (ms) membrane time constant
+    tau_m_exc = 20.0		# excitatory membrane time constant 
+    theta  = 20.0		# (mV) threshold
+    J      = 8.		# postsynaptic amplitude in mV    
+    fudge = 1 
+    add_spikes = 0 # 0 if no additional inh. spikes to be added and one if additional spikes to be added.
+    extra_spk = 'inh'
+    C_m_exc = 200.
+    C_m = 250.
+    
+    delay_inter = 5.                 # (ms) synaptic transmission delay
+    
+    delay_intra = 2.
+            
+
+    rnd_dist = False		# True if distributions are used for parameters
+    
+    #Additional Spikes for extra pulses
+    num_gen = 30 #Number of spike generators
+    dur = 4.     #Duration for which the spikes sustain
+    num_spk = 4  #Number of additional spikes  
+    st_val = 770.0 #Starting value of the spike times
+    beg_width = 3.
+    ex_width = 8. #Width of the gaussian within which the additional spikes have to be inserted
+    #rnd_seeds = 1#The first number is the seed for global process and the second number is for vps.
+    
+    dc1_pars = {			# external DC generator
+	'start':400.,
+	'stop':0.,
+	'amplitude':0.,
+	}
+	
+    dc2_pars = {			# external DC generator
+	'start':600.,
+	'stop':0.,
+	'amplitude':0.,
+	}
+	
+    
+    pg_rate_exc = 11500.
+    pg_rate_inh = 11500.
+    extra_inh = 0.
+    
+    num_spikes_burst_gpe = 4.0
+    num_spikes_burst_stn = 6.0
+    J_ext = 8.
+    
+    #synaptic weights
+    J_gpe_gpe = -4./1.5
+    J_gpe_stn = -2./1.5
+    J_stn_stn =  0.01/1.5
+    J_stn_gpe =  6./1.5
+    
+    #connectivity
+    epsilon_gpe_gpe = 0.1/3
+    epsilon_stn_gpe = 0.08
+    epsilon_stn_stn = 0.05
+    epsilon_gpe_stn = 0.1
+    
+        
+    def __init__(self,new_vals=[]):
+	if new_vals!=[]: 	# overwrite pars
+	    for ii in new_vals.keys():	 
+		if ii=='dc1_pars_amp':
+		    self.dc1_pars['amplitude'] = new_vals[ii]		
+		elif isinstance(new_vals[ii],(float,int)):
+		    ss = 'self.%s = %f'%(ii,new_vals[ii])
+		elif isinstance(new_vals[ii],str):
+		    ss = 'self.%s = "%s"'%(ii,new_vals[ii])
+		exec(ss)	    
+	
+	#self.pg_rate_inh = self.pg_rate_exc + self.extra_inh
+	# NOTE: having 2 different inh populations e.g.[-4, -0.8, -0.2]
+	self.N_exc = [(1-self.exc2_ratio)*self.N[0],self.exc2_ratio*self.N[0]]	
+	#self.N = [self.N[0],(1-self.inh2_ratio)*self.N[1],-self.inh2_ratio*self.N[1]]
+	self.K_exc = self.N_exc                             # for use in simulation_d to avoid non existent population
+	# remove one population if it is zero size
+	self.spiking_mode_exc = ['no_bursting','bursting']
+	#print self.N_exc
+	#print self.spiking_mode_exc
+	  
+ 
+	if self.N_exc[0]==0:
+		try:
+		    self.N_exc.pop(0)
+		    self.spiking_mode_exc.pop(0)
+		except:
+		    print 'some error with removing zero population'		    
+	elif len(self.N_exc)==2:
+	    if self.N_exc[1]==0:
+		try:
+		    self.N_exc.pop(1)
+		    self.spiking_mode_exc.pop(1)
+		except:
+		    print 'some error with removing zero population'
+	    
+	# NOTE: having 2 different inh populations e.g.[-4, -0.8, -0.2]
+	self.N_inh = [(1-self.inh2_ratio)*self.N[1],self.inh2_ratio*self.N[1]]	
+	#self.N = [self.N[0],(1-self.inh2_ratio)*self.N[1],-self.inh2_ratio*self.N[1]]
+	self.K_inh = self.N_inh                             # for use in simulation_d to avoid non existent population
+	# remove one population if it is zero size
+	self.spiking_mode_inh = ['no_bursting','bursting']
+	#print self.N_inh
+	#print self.spiking_mode_inh
+	  
+	    
+	if self.N_inh[0]==0:
+		try:
+		    self.N_inh.pop(0)
+		    self.spiking_mode_inh.pop(0)
+		except:
+		    print 'some error with removing zero population'		    
+	elif len(self.N_inh)==2:
+	    if self.N_inh[1]==0:
+		try:
+		    self.N_inh.pop(1)
+		    self.spiking_mode_inh.pop(1)
+		except:
+		    print 'some error with removing zero population'
+	
+	self.N_exc = np.array(self.N_exc) * int(self.order)
+	self.N_exc = np.array(self.N_exc.round(),int)
+	#print self.N_exc			
+	#print self.spiking_mode_exc
+	
+	self.N_inh = np.array(self.N_inh) * int(self.order)
+	self.N_inh = np.array(self.N_inh.round(),int)
+	#print self.N_inh			
+	#print self.spiking_mode_inh
+	
+	self.C_ext = self.epsilon*self.N[0]	# number of external connections per neuron
+	
+
+	self._set_neuron_pars()	#set single neuron parameters
+	
+	#self.tot_conn = abs(self.N[self.hub_pop]) * self.epsilon * np.sum(np.absolute(self.N))
+	#self.tot_hub_conn = (self.hub_ratio * abs(self.N[self.hub_pop])) * self.epsilon_hub * np.sum(np.absolute(self.N))
+	#self.epsilon_fin_sel = (self.tot_conn - self.tot_hub_conn)/((1-self.hub_ratio)*(abs(self.N[self.hub_pop]))*(np.sum(np.absolute(self.N))))
+	    
+	    
+    def _set_neuron_pars(self):
+	
+	self.neuron_params_exc = range(len(self.N_exc))
+	
+
+		
+	if self.model_type == 'psdb':
+	  for ntypes in np.arange(0,len(self.N_exc)):
+		if self.spiking_mode_exc[ntypes] == 'bursting':
+		  self.neuron_params_exc[ntypes]={
+				  'spb':self.num_spikes_burst_stn,
+				  'tau_m':self.tau_m,
+				  'C_m':self.C_m,
+				  'tau_syn':self.tau_syn_in
+				}
+				
+		elif self.spiking_mode_exc[ntypes] == 'excitatory':
+		  self.neuron_params_exc[ntypes]={
+                                 'spb':1.0,
+                                 'tau_m':self.tau_m
+				}
+		elif self.spiking_mode_exc[ntypes] == 'no_bursting':
+		  self.neuron_params_exc[ntypes]={
+				'spb': 1.0,
+				'tau_m':self.tau_m,
+				'C_m':self.C_m,
+				'tau_syn':self.tau_syn_in
+				}
+				
+	self.neuron_params_inh = range(len(self.N_inh))
+	
+
+		
+	if self.model_type == 'psdb':
+	  for ntypes in np.arange(0,len(self.N_inh)):
+		if self.spiking_mode_inh[ntypes] == 'bursting':
+		  self.neuron_params_inh[ntypes]={
+				  'spb':self.num_spikes_burst_gpe,
+				  'tau_m':self.tau_m,
+				  'C_m':self.C_m,
+				  'tau_syn':self.tau_syn_in
+				}
+				
+		elif self.spiking_mode_inh[ntypes] == 'excitatory':
+		  self.neuron_params_inh[ntypes]={
+                                 'spb':1.0,
+                                 'tau_m':self.tau_m,
+                                 'C_m':self.C_m,
+                                 'tau_syn':self.tau_syn_in
+				}
+		elif self.spiking_mode_inh[ntypes] == 'no_bursting':
+		  self.neuron_params_inh[ntypes]={
+				'spb': 1.0,
+				'tau_m':self.tau_m,
+				'C_m':self.C_m,
+				'tau_syn':self.tau_syn_in
+				}
+
+
